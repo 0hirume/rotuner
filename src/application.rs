@@ -7,10 +7,12 @@ use super::{
     arguments::{Arguments, Command},
     catalog::{self, Catalog},
     configuration::Configuration,
-    settings,
+    diagnostics, settings,
 };
 
 pub(super) fn run() -> Result<()> {
+    miette::set_hook(Box::new(|_| Box::new(diagnostics::handler()))).into_diagnostic()?;
+
     match Arguments::parse().command {
         Command::Apply { configuration } => {
             let mut configuration = Configuration::load(configuration)?;

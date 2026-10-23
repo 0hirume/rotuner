@@ -4,6 +4,7 @@ mod application;
 mod arguments;
 mod catalog;
 mod configuration;
+mod diagnostics;
 mod settings;
 mod xml;
 
