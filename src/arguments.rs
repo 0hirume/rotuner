@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -17,6 +17,12 @@ pub(super) enum Command {
         configuration: Option<PathBuf>,
     },
 
+    #[command(about = "Export current settings, client JSON, and Studio registry values as TOML")]
+    Export {
+        #[arg(value_enum, help = "Source to export; omit to export all sources")]
+        source: Option<Source>,
+    },
+
     #[command(about = "List supported settings and enum choices")]
     Catalog {
         #[arg(help = "Filter by configuration path or setting name")]
@@ -25,4 +31,11 @@ pub(super) enum Command {
 
     #[command(about = "Print the configuration JSON Schema")]
     Schema,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+pub(super) enum Source {
+    Settings,
+    ClientStorage,
+    StudioRegistry,
 }

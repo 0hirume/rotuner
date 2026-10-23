@@ -5,11 +5,11 @@ use schemars::schema_for;
 use serde_json::{Map, Value as SchemaValue, json};
 
 use super::{
-    property::{self, Property},
+    property::{self, Kind, Property},
     source,
 };
 
-use crate::configuration::{Configuration, Properties, Raw};
+use crate::configuration::{Configuration, Properties, Raw, Value};
 
 pub(crate) struct Catalog {
     pub(super) classes: BTreeMap<String, BTreeMap<String, Property>>,
@@ -35,6 +35,25 @@ impl Catalog {
         }
 
         Ok(())
+    }
+
+    pub(crate) fn export_value(&self, class: &str, name: &str, value: Value) -> Option<Value> {
+        let property = self.classes.get(class)?.get(name)?;
+
+        match (&property.kind, value) {
+            (Kind::Unsupported(_), _) => None,
+
+            (Kind::Enumeration { choices, .. }, Value::Integer(number)) => Some(
+                choices
+                    .iter()
+                    .find(|(_, value)| **value == number)
+                    .map_or(Value::Integer(number), |(name, _)| {
+                        Value::String(name.clone())
+                    }),
+            ),
+
+            (_, value) => Some(value),
+        }
     }
 
     pub(crate) fn schema(&self) -> Result<SchemaValue> {

@@ -6,6 +6,7 @@ mod catalog;
 mod configuration;
 mod desktop;
 mod diagnostics;
+mod export;
 mod settings;
 mod xml;
 

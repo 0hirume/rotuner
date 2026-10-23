@@ -1,13 +1,20 @@
-use std::{borrow::Cow, collections::BTreeSet};
+use std::{
+    borrow::Cow,
+    collections::{BTreeMap, BTreeSet},
+};
 
 use miette::{IntoDiagnostic as _, Result, bail, miette};
 
 use quick_xml::{
     Reader, Writer, XmlVersion,
+    escape::unescape,
     events::{BytesStart, BytesText, Event},
 };
 
-use super::configuration::{Classes, Value};
+use super::{
+    catalog::Catalog,
+    configuration::{Classes, Value},
+};
 
 pub(super) fn patch(source: &str, classes: &Classes) -> Result<String> {
     validate(source)?;
@@ -86,6 +93,123 @@ pub(super) fn patch(source: &str, classes: &Classes) -> Result<String> {
     validate(&output)?;
 
     Ok(output)
+}
+
+pub(super) fn export(source: &str, catalog: &Catalog) -> Result<Classes> {
+    validate(source)?;
+    let mut reader = Reader::from_str(source);
+    reader.config_mut().expand_empty_elements = true;
+    let mut classes = Classes::new();
+    let mut stack = Vec::new();
+    let mut class = String::new();
+
+    loop {
+        match reader.read_event().into_diagnostic()? {
+            Event::Start(element) => {
+                if stack == ["roblox", "Item", "Properties"] {
+                    let name = attribute(&element, "name")?;
+
+                    if let Some(value) = read_value(&mut reader, &element)?
+                        .and_then(|value| catalog.export_value(&class, &name, value))
+                    {
+                        classes
+                            .entry(class.clone())
+                            .or_default()
+                            .insert(name, value);
+                    }
+
+                    continue;
+                }
+
+                if stack == ["roblox"] && element.name().as_ref() == "Item" {
+                    class = attribute(&element, "class")?;
+                }
+
+                stack.push(element.name().as_ref().to_owned());
+            }
+
+            Event::End(_) => {
+                stack.pop();
+            }
+
+            Event::Eof => break,
+            _ => {}
+        }
+    }
+
+    Ok(classes)
+}
+
+fn read_value(reader: &mut Reader<&[u8]>, element: &BytesStart<'_>) -> Result<Option<Value>> {
+    let name = element.name();
+    let kind = name.as_ref();
+
+    let value = match kind {
+        "Color3" | "Vector2" | "Vector3" => {
+            let mut components = BTreeMap::new();
+
+            loop {
+                match reader.read_event().into_diagnostic()? {
+                    Event::Start(component) => {
+                        let name = component.name().as_ref().to_owned();
+                        let value = read_text(reader)?.trim().parse().into_diagnostic()?;
+                        components.insert(name, value);
+                    }
+
+                    Event::End(_) => break,
+
+                    Event::Eof => {
+                        bail!("Incomplete XML components");
+                    }
+
+                    _ => {}
+                }
+            }
+
+            Value::Components(components)
+        }
+
+        "bool" => Value::Boolean(read_text(reader)?.trim().parse().into_diagnostic()?),
+
+        "int" | "int64" | "token" | "Color3uint8" => {
+            Value::Integer(read_text(reader)?.trim().parse().into_diagnostic()?)
+        }
+
+        "float" | "double" => Value::Float(read_text(reader)?.trim().parse().into_diagnostic()?),
+        "string" | "QDir" => Value::String(read_text(reader)?),
+
+        _ => {
+            reader.read_to_end(element.name()).into_diagnostic()?;
+
+            return Ok(None);
+        }
+    };
+
+    Ok(Some(value))
+}
+
+fn read_text(reader: &mut Reader<&[u8]>) -> Result<String> {
+    let mut value = String::new();
+
+    loop {
+        match reader.read_event().into_diagnostic()? {
+            Event::Text(text) => value.push_str(&text.xml_content(XmlVersion::Implicit1_0)),
+            Event::CData(text) => value.push_str(&text.xml_content(XmlVersion::Implicit1_0)),
+
+            Event::GeneralRef(reference) => {
+                let reference = format!("&{};", reference.as_ref());
+                value.push_str(&unescape(&reference).into_diagnostic()?);
+            }
+
+            Event::End(_) => return Ok(value),
+
+            Event::Start(_) | Event::Eof => {
+                bail!("Expected XML scalar content");
+            }
+
+            _ => {}
+        }
+    }
 }
 
 fn position(reader: &Reader<&[u8]>) -> Result<usize> {

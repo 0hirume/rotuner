@@ -1,7 +1,7 @@
 use std::{
     collections::BTreeMap,
     fs,
-    io::Write as _,
+    io::{ErrorKind, Write as _},
     path::{Path, PathBuf},
     process::Command,
 };
@@ -9,7 +9,12 @@ use std::{
 use miette::{IntoDiagnostic as _, Result, WrapErr as _, bail, miette};
 use tempfile::NamedTempFile;
 
-use super::{configuration::Configuration, desktop, xml};
+use super::{
+    arguments::Source,
+    catalog::Catalog,
+    configuration::{Classes, Configuration},
+    desktop, xml,
+};
 
 #[cfg(windows)]
 use super::studio;
@@ -68,6 +73,66 @@ pub(super) fn apply(directory: &Path, configuration: Configuration) -> Result<us
         #[cfg(windows)]
         preferences,
     )
+}
+
+pub(super) fn export(directory: &Path, source: Option<Source>) -> Result<Configuration> {
+    if !cfg!(windows) {
+        bail!("Rotuner currently supports Windows Roblox installations");
+    }
+
+    let mut configuration = Configuration::default();
+
+    if matches!(source, None | Some(Source::Settings)) {
+        let catalog = Catalog::load()?;
+
+        for (filename, target) in [
+            ("GlobalBasicSettings_13.xml", &mut configuration.client),
+            (
+                "GlobalBasicSettings_13_Studio.xml",
+                &mut configuration.playtest,
+            ),
+        ] {
+            let mut classes = export_xml(&directory.join(filename), &catalog)?;
+            *target = classes.remove("UserGameSettings").unwrap_or_default();
+        }
+
+        configuration.studio = export_xml(&directory.join("GlobalSettings_13.xml"), &catalog)?;
+    }
+
+    if matches!(source, None | Some(Source::ClientStorage))
+        && let Some(source) =
+            read_optional(&directory.join("LocalStorage").join("appStorage.json"))?
+    {
+        configuration.raw.storage = desktop::export(&source)?;
+    }
+
+    #[cfg(windows)]
+    if matches!(source, None | Some(Source::StudioRegistry)) {
+        configuration.raw.registry = studio::export()?;
+    }
+
+    Ok(configuration)
+}
+
+fn export_xml(path: &Path, catalog: &Catalog) -> Result<Classes> {
+    read_optional(path)?.map_or_else(
+        || Ok(Classes::new()),
+        |source| {
+            xml::export(&source, catalog)
+                .wrap_err_with(|| format!("Cannot export {}", path.display()))
+        },
+    )
+}
+
+fn read_optional(path: &Path) -> Result<Option<String>> {
+    match fs::read_to_string(path) {
+        Ok(source) => Ok(Some(source)),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
+
+        Err(error) => Err(error)
+            .into_diagnostic()
+            .wrap_err_with(|| format!("Cannot read {}", path.display())),
+    }
 }
 
 fn ensure_closed() -> Result<()> {

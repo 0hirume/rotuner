@@ -2,38 +2,44 @@ use std::{collections::BTreeMap, env, fs, io::ErrorKind, path::PathBuf};
 
 use miette::{IntoDiagnostic as _, Result, WrapErr as _, bail};
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 pub(super) type Properties = BTreeMap<String, Value>;
 pub(super) type Classes = BTreeMap<String, Properties>;
 
-#[derive(Deserialize)]
+#[derive(Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Configuration {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub client: Properties,
 
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub playtest: Properties,
 
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub studio: Classes,
 
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Raw::is_empty")]
     pub raw: Raw,
 }
 
-#[derive(Default, Deserialize, JsonSchema)]
+#[derive(Default, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Raw {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub storage: BTreeMap<String, String>,
 
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub registry: Vec<Registry>,
 }
 
-#[derive(Deserialize, JsonSchema)]
+impl Raw {
+    fn is_empty(&self) -> bool {
+        self.storage.is_empty() && self.registry.is_empty()
+    }
+}
+
+#[derive(Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[schemars(inline)]
 pub(super) struct Registry {
@@ -42,7 +48,7 @@ pub(super) struct Registry {
     pub data: RegistryData,
 }
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Deserialize, Serialize, JsonSchema)]
 #[serde(tag = "type", content = "value", deny_unknown_fields)]
 #[schemars(inline)]
 pub(super) enum RegistryData {
@@ -63,9 +69,12 @@ pub(super) enum RegistryData {
 
     #[serde(rename = "REG_BINARY")]
     Binary(Vec<u8>),
+
+    #[serde(rename = "RAW")]
+    Raw { kind: u32, bytes: Vec<u8> },
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(untagged)]
 pub(super) enum Value {
     Boolean(bool),

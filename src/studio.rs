@@ -1,7 +1,10 @@
 use miette::{IntoDiagnostic as _, Result, WrapErr as _, bail};
-use windows_registry::{CURRENT_USER, Transaction, Type, Value as RegistryValue};
+use windows_registry::{CURRENT_USER, Key, Transaction, Type, Value as RegistryValue};
 
-use super::configuration::{Registry, RegistryData};
+use super::{
+    configuration::{Registry, RegistryData},
+    export,
+};
 
 const ROOT: &str = r"Software\Roblox\RobloxStudio";
 const VALUE_NOT_FOUND: i32 = -2_147_024_894;
@@ -87,6 +90,96 @@ impl Change {
     }
 }
 
+pub(super) fn export() -> Result<Vec<Registry>> {
+    let root = match CURRENT_USER.open(ROOT) {
+        Ok(root) => root,
+        Err(error) if error.code().0 == VALUE_NOT_FOUND => return Ok(Vec::new()),
+
+        Err(error) => {
+            return Err(error)
+                .into_diagnostic()
+                .wrap_err("Cannot read Studio registry");
+        }
+    };
+
+    let mut entries = Vec::new();
+    export_key(&root, "", &mut entries)?;
+
+    Ok(entries)
+}
+
+fn export_key(key: &Key, path: &str, entries: &mut Vec<Registry>) -> Result<()> {
+    for (name, value) in key.values().into_diagnostic()? {
+        if name.ends_with("timeLastUsed") || name.ends_with("lastUsedDir") {
+            continue;
+        }
+
+        let data = decode(&value);
+
+        let excluded = match &data {
+            RegistryData::Binary(_) | RegistryData::Raw { .. } => true,
+
+            RegistryData::String(value) | RegistryData::ExpandString(value) => {
+                export::excluded(value)
+            }
+
+            RegistryData::Strings(values) => values.is_empty(),
+            RegistryData::Integer(_) | RegistryData::Long(_) => false,
+        };
+
+        if excluded {
+            continue;
+        }
+
+        entries.push(Registry {
+            path: path.to_owned(),
+            name,
+            data,
+        });
+    }
+
+    for name in key.keys().into_diagnostic()? {
+        let child = key.open(&name).into_diagnostic()?;
+
+        let path = if path.is_empty() {
+            name
+        } else {
+            format!("{path}\\{name}")
+        };
+
+        export_key(&child, &path, entries)?;
+    }
+
+    Ok(())
+}
+
+fn decode(value: &RegistryValue) -> RegistryData {
+    let decoded = match value.ty() {
+        Type::String => String::try_from(value.clone()).map(RegistryData::String),
+        Type::ExpandString => String::try_from(value.clone()).map(RegistryData::ExpandString),
+        Type::MultiString => Vec::<String>::try_from(value.clone()).map(RegistryData::Strings),
+        Type::U32 => u32::try_from(value.clone()).map(RegistryData::Integer),
+        Type::U64 => u64::try_from(value.clone()).map(RegistryData::Long),
+        Type::Bytes => Ok(RegistryData::Binary(value.to_vec())),
+
+        Type::Other(_) => Ok(RegistryData::Raw {
+            kind: value.ty().into(),
+            bytes: value.to_vec(),
+        }),
+    };
+
+    if let Ok(decoded) = decoded
+        && encode(&decoded).is_ok_and(|encoded| encoded == *value)
+    {
+        return decoded;
+    }
+
+    RegistryData::Raw {
+        kind: value.ty().into(),
+        bytes: value.to_vec(),
+    }
+}
+
 fn encode(data: &RegistryData) -> Result<RegistryValue> {
     let value = match data {
         RegistryData::String(value) | RegistryData::ExpandString(value) => {
@@ -135,6 +228,21 @@ fn encode(data: &RegistryData) -> Result<RegistryValue> {
         RegistryData::Integer(value) => RegistryValue::from(*value),
         RegistryData::Long(value) => RegistryValue::from(*value),
         RegistryData::Binary(value) => RegistryValue::from(value.as_slice()),
+
+        RegistryData::Raw { kind, bytes } => {
+            let kind = Type::from(*kind);
+
+            if matches!(kind, Type::String | Type::ExpandString | Type::MultiString)
+                && !bytes.ends_with(&[0, 0])
+            {
+                bail!("Raw registry strings require a UTF-16 null terminator");
+            }
+
+            let mut value = RegistryValue::from(bytes.as_slice());
+            value.set_ty(kind);
+
+            value
+        }
     };
 
     Ok(value)

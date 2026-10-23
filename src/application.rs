@@ -29,6 +29,20 @@ pub(super) fn run() -> Result<()> {
             println!("Updated {changed} settings store(s).");
         }
 
+        Command::Export { source } => {
+            let directory = dirs::data_local_dir()
+                .ok_or_else(|| miette!("Cannot locate Local AppData"))?
+                .join("Roblox");
+
+            let configuration = settings::export(&directory, source)?;
+            let source = toml::to_string_pretty(&configuration).into_diagnostic()?;
+
+            io::stdout()
+                .lock()
+                .write_all(source.as_bytes())
+                .into_diagnostic()?;
+        }
+
         Command::Catalog { filter } => catalog::print(&Catalog::load()?, filter.as_deref())?,
 
         Command::Schema => {
