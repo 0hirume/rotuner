@@ -9,7 +9,10 @@ use std::{
 use miette::{IntoDiagnostic as _, Result, WrapErr as _, bail, miette};
 use tempfile::NamedTempFile;
 
-use super::{configuration::Configuration, xml};
+use super::{configuration::Configuration, desktop, xml};
+
+#[cfg(windows)]
+use super::studio;
 
 struct Change {
     path: PathBuf,
@@ -26,29 +29,25 @@ pub(super) fn apply(directory: &Path, configuration: Configuration) -> Result<us
     ensure_closed()?;
     let mut changes = Vec::new();
 
+    #[cfg(windows)]
+    let preferences = studio::Change::prepare(&configuration.raw.registry)?;
+
+    if !configuration.raw.storage.is_empty() {
+        let path = directory.join("LocalStorage").join("appStorage.json");
+
+        changes.extend(prepare(path, |source| {
+            desktop::patch(source, &configuration.raw.storage)
+        })?);
+    }
+
     for (filename, classes) in configuration.files() {
         if classes.values().all(BTreeMap::is_empty) {
             continue;
         }
 
-        let path = directory.join(filename);
-        ensure_regular(&path)?;
-
-        let original = fs::read_to_string(&path)
-            .into_diagnostic()
-            .wrap_err_with(|| format!("Cannot read {}", path.display()))?;
-
-        let updated = xml::patch(&original, &classes)
-            .wrap_err_with(|| format!("Cannot update {filename}"))?;
-
-        if updated != original {
-            changes.push(Change {
-                replacement: stage(&path, &updated)?,
-                rollback: stage(&path, &original)?,
-                path,
-                original,
-            });
-        }
+        changes.extend(prepare(directory.join(filename), |source| {
+            xml::patch(source, &classes)
+        })?);
     }
 
     ensure_closed()?;
@@ -64,7 +63,11 @@ pub(super) fn apply(directory: &Path, configuration: Configuration) -> Result<us
         }
     }
 
-    commit(changes)
+    commit(
+        changes,
+        #[cfg(windows)]
+        preferences,
+    )
 }
 
 fn ensure_closed() -> Result<()> {
@@ -110,6 +113,28 @@ fn ensure_regular(path: &Path) -> Result<()> {
     Ok(())
 }
 
+fn prepare(path: PathBuf, update: impl FnOnce(&str) -> Result<String>) -> Result<Option<Change>> {
+    ensure_regular(&path)?;
+
+    let original = fs::read_to_string(&path)
+        .into_diagnostic()
+        .wrap_err_with(|| format!("Cannot read {}", path.display()))?;
+
+    let updated =
+        update(&original).wrap_err_with(|| format!("Cannot update {}", path.display()))?;
+
+    if updated == original {
+        return Ok(None);
+    }
+
+    Ok(Some(Change {
+        replacement: stage(&path, &updated)?,
+        rollback: stage(&path, &original)?,
+        path,
+        original,
+    }))
+}
+
 fn stage(path: &Path, contents: &str) -> Result<NamedTempFile> {
     let parent = path
         .parent()
@@ -122,42 +147,54 @@ fn stage(path: &Path, contents: &str) -> Result<NamedTempFile> {
     Ok(temporary)
 }
 
-fn commit(changes: Vec<Change>) -> Result<usize> {
-    let mut completed: Vec<(PathBuf, NamedTempFile)> = Vec::new();
+fn commit(
+    changes: Vec<Change>,
+    #[cfg(windows)] preferences: Option<studio::Change>,
+) -> Result<usize> {
+    let mut completed = Vec::new();
 
-    for change in changes {
-        if let Err(error) = change.replacement.persist(&change.path) {
-            let mut failures = Vec::new();
+    let result: Result<usize> = (|| {
+        for change in changes {
+            change
+                .replacement
+                .persist(&change.path)
+                .into_diagnostic()
+                .wrap_err_with(|| format!("Cannot write {}", change.path.display()))?;
 
-            for (path, rollback) in completed.into_iter().rev() {
-                if let Err(mut error) = rollback.persist(&path) {
-                    error.file.disable_cleanup(true);
-
-                    failures.push(format!(
-                        "{}: {}; original retained at {}",
-                        path.display(),
-                        error.error,
-                        error.file.path().display()
-                    ));
-                }
-            }
-
-            if !failures.is_empty() {
-                bail!(
-                    "Failed to write {}: {error}; rollback failed: {}",
-                    change.path.display(),
-                    failures.join("; ")
-                );
-            }
-
-            bail!(
-                "Failed to write {}: {error}; previous changes were restored",
-                change.path.display()
-            );
+            completed.push((change.path, change.rollback));
         }
 
-        completed.push((change.path, change.rollback));
+        #[cfg(windows)]
+        if let Some(preferences) = preferences {
+            return Ok(completed.len() + preferences.commit()?);
+        }
+
+        Ok(completed.len())
+    })();
+
+    let error = match result {
+        Ok(count) => return Ok(count),
+        Err(error) => error,
+    };
+
+    let mut failures = Vec::new();
+
+    for (path, rollback) in completed.into_iter().rev() {
+        if let Err(mut error) = rollback.persist(&path) {
+            error.file.disable_cleanup(true);
+
+            failures.push(format!(
+                "{}: {}; original retained at {}",
+                path.display(),
+                error.error,
+                error.file.path().display()
+            ));
+        }
     }
 
-    Ok(completed.len())
+    if !failures.is_empty() {
+        return Err(error).wrap_err(format!("Rollback failed: {}", failures.join("; ")));
+    }
+
+    Err(error).wrap_err("Previous changes were restored")
 }

@@ -1,14 +1,15 @@
 use std::collections::BTreeMap;
 
 use miette::{Result, WrapErr as _, bail, miette};
-use serde_json::{Value as SchemaValue, json};
+use schemars::schema_for;
+use serde_json::{Map, Value as SchemaValue, json};
 
 use super::{
     property::{self, Property},
     source,
 };
 
-use crate::configuration::{Configuration, Properties};
+use crate::configuration::{Configuration, Properties, Raw};
 
 pub(crate) struct Catalog {
     pub(super) classes: BTreeMap<String, BTreeMap<String, Property>>,
@@ -44,7 +45,7 @@ impl Catalog {
 
         let client = properties_schema(client);
 
-        let studio = self
+        let studio: Map<_, _> = self
             .classes
             .iter()
             .filter(|(name, _)| *name != "UserGameSettings")
@@ -53,6 +54,7 @@ impl Catalog {
 
         let properties = [
             ("client".into(), client.clone()),
+            ("raw".into(), schema_for!(Raw).to_value()),
             ("playtest".into(), client),
             ("studio".into(), property::object(studio)),
         ]

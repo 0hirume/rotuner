@@ -17,7 +17,7 @@ pub(super) enum Command {
         configuration: Option<PathBuf>,
     },
 
-    #[command(about = "List persistent settings and enum choices from the Roblox Full API Dump")]
+    #[command(about = "List supported settings and enum choices")]
     Catalog {
         #[arg(help = "Filter by configuration path or setting name")]
         filter: Option<String>,

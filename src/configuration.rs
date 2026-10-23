@@ -1,6 +1,7 @@
 use std::{collections::BTreeMap, env, fs, io::ErrorKind, path::PathBuf};
 
 use miette::{IntoDiagnostic as _, Result, WrapErr as _, bail};
+use schemars::JsonSchema;
 use serde::Deserialize;
 
 pub(super) type Properties = BTreeMap<String, Value>;
@@ -17,6 +18,51 @@ pub(super) struct Configuration {
 
     #[serde(default)]
     pub studio: Classes,
+
+    #[serde(default)]
+    pub raw: Raw,
+}
+
+#[derive(Default, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub(super) struct Raw {
+    #[serde(default)]
+    pub storage: BTreeMap<String, String>,
+
+    #[serde(default)]
+    pub registry: Vec<Registry>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[schemars(inline)]
+pub(super) struct Registry {
+    pub path: String,
+    pub name: String,
+    pub data: RegistryData,
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[serde(tag = "type", content = "value", deny_unknown_fields)]
+#[schemars(inline)]
+pub(super) enum RegistryData {
+    #[serde(rename = "REG_SZ")]
+    String(String),
+
+    #[serde(rename = "REG_EXPAND_SZ")]
+    ExpandString(String),
+
+    #[serde(rename = "REG_MULTI_SZ")]
+    Strings(Vec<String>),
+
+    #[serde(rename = "REG_DWORD")]
+    Integer(u32),
+
+    #[serde(rename = "REG_QWORD")]
+    Long(u64),
+
+    #[serde(rename = "REG_BINARY")]
+    Binary(Vec<u8>),
 }
 
 #[derive(Deserialize)]
@@ -40,9 +86,15 @@ impl Configuration {
             .into_diagnostic()
             .wrap_err_with(|| format!("Cannot read {}", path.display()))?;
 
-        toml::from_str(&source)
+        let configuration: Self = toml::from_str(&source)
             .into_diagnostic()
-            .wrap_err_with(|| format!("Invalid configuration in {}", path.display()))
+            .wrap_err_with(|| format!("Invalid configuration in {}", path.display()))?;
+
+        Ok(configuration)
+    }
+
+    pub(super) fn needs_catalog(&self) -> bool {
+        !self.client.is_empty() || !self.playtest.is_empty() || !self.studio.is_empty()
     }
 
     pub(super) fn files(self) -> [(&'static str, Classes); 3] {

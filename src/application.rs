@@ -16,14 +16,17 @@ pub(super) fn run() -> Result<()> {
     match Arguments::parse().command {
         Command::Apply { configuration } => {
             let mut configuration = Configuration::load(configuration)?;
-            Catalog::load()?.resolve(&mut configuration)?;
+
+            if configuration.needs_catalog() {
+                Catalog::load()?.resolve(&mut configuration)?;
+            }
 
             let directory = dirs::data_local_dir()
                 .ok_or_else(|| miette!("Cannot locate Local AppData"))?
                 .join("Roblox");
 
             let changed = settings::apply(&directory, configuration)?;
-            println!("Updated {changed} settings file(s).");
+            println!("Updated {changed} settings store(s).");
         }
 
         Command::Catalog { filter } => catalog::print(&Catalog::load()?, filter.as_deref())?,

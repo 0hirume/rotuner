@@ -4,9 +4,13 @@ mod application;
 mod arguments;
 mod catalog;
 mod configuration;
+mod desktop;
 mod diagnostics;
 mod settings;
 mod xml;
+
+#[cfg(windows)]
+mod studio;
 
 use std::process::ExitCode;
 
