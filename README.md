@@ -11,17 +11,19 @@ CameraMode = "Classic"
 "Auto Closing Brackets" = true
 ```
 
-Close Roblox and Studio, then run:
+Save as `config.toml`, close Roblox and Studio, then run:
 
 ```sh
 rotuner apply
 ```
 
-It checks `./rotuner.toml`, `./config.toml`, the OS config directory's `rotuner/config.toml`, then `~/.config/rotuner/config.toml`. The first file wins. On Windows, the OS config directory is `%APPDATA%`. Use `rotuner apply path/to/config.toml` to choose a file.
+Use `rotuner apply path/to/config.toml` to choose another file.
 
-Browse settings with `rotuner catalog`. Get an editor schema with `rotuner schema`.
+Browse settings with `rotuner catalog`; generate an editor schema with `rotuner schema`.
 
-Raw writes accept JSON text for client storage and typed registry values for Studio:
+Export with `rotuner export > config.toml`. It exports all sources; pass `settings`, `client-storage`, or `studio-registry` to select one.
+
+Raw client JSON and Studio registry values:
 
 ```toml
 [raw.storage]
