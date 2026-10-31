@@ -45,9 +45,29 @@ jobs:
         id: plan
         run: nu scripts/release.nu plan
 
+  check:
+    name: check build
+    needs: plan
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - name: check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: check and build
+        run: |
+          cargo clippy --locked --all-targets
+          cargo build --locked
+          cargo run --locked -- --help
+
   build:
     name: build release
-    needs: plan
+    needs: [plan, check]
     if: github.event_name == 'push'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60

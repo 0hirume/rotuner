@@ -22,6 +22,8 @@ def "main plan" []: nothing -> string {
         include: ($configuration.targets | each {|target|
             let runner = match $target {
                 x86_64-pc-windows-msvc => "windows-2025"
+                x86_64-apple-darwin => "macos-26-intel"
+                aarch64-apple-darwin => "macos-26"
 
                 _ => {
                     error make {
