@@ -17,7 +17,7 @@ pub(super) enum Command {
         configuration: Option<PathBuf>,
     },
 
-    #[command(about = "Export current settings, client JSON, and Studio registry values as TOML")]
+    #[command(about = "Export current Roblox and Studio settings as TOML")]
     Export {
         #[arg(value_enum, help = "Source to export; omit to export all sources")]
         source: Option<Source>,
@@ -37,5 +37,5 @@ pub(super) enum Command {
 pub(super) enum Source {
     Settings,
     ClientStorage,
-    StudioRegistry,
+    StudioPreferences,
 }

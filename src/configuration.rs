@@ -4,6 +4,8 @@ use miette::{IntoDiagnostic as _, Result, WrapErr as _, bail};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use super::preferences;
+
 pub(super) type Properties = BTreeMap<String, Value>;
 pub(super) type Classes = BTreeMap<String, Properties>;
 
@@ -29,49 +31,14 @@ pub(super) struct Raw {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub storage: BTreeMap<String, String>,
 
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub registry: Vec<Registry>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub preferences: BTreeMap<String, preferences::Value>,
 }
 
 impl Raw {
     fn is_empty(&self) -> bool {
-        self.storage.is_empty() && self.registry.is_empty()
+        self.storage.is_empty() && self.preferences.is_empty()
     }
-}
-
-#[derive(Deserialize, Serialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-#[schemars(inline)]
-pub(super) struct Registry {
-    pub path: String,
-    pub name: String,
-    pub data: RegistryData,
-}
-
-#[derive(Deserialize, Serialize, JsonSchema)]
-#[serde(tag = "type", content = "value", deny_unknown_fields)]
-#[schemars(inline)]
-pub(super) enum RegistryData {
-    #[serde(rename = "REG_SZ")]
-    String(String),
-
-    #[serde(rename = "REG_EXPAND_SZ")]
-    ExpandString(String),
-
-    #[serde(rename = "REG_MULTI_SZ")]
-    Strings(Vec<String>),
-
-    #[serde(rename = "REG_DWORD")]
-    Integer(u32),
-
-    #[serde(rename = "REG_QWORD")]
-    Long(u64),
-
-    #[serde(rename = "REG_BINARY")]
-    Binary(Vec<u8>),
-
-    #[serde(rename = "RAW")]
-    Raw { kind: u32, bytes: Vec<u8> },
 }
 
 #[derive(Deserialize, Serialize)]

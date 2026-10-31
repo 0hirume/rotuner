@@ -24,6 +24,9 @@ toml = "1"
 [target.'cfg(windows)'.dependencies]
 windows-registry = "0.6"
 
+[target.'cfg(not(windows))'.dependencies]
+plist = { version = "1", default-features = false }
+
 [lints.clippy]
 all = { level = "deny", priority = -1 }
 cargo = { level = "deny", priority = -1 }

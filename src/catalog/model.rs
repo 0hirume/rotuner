@@ -71,9 +71,15 @@ impl Catalog {
             .map(|(name, properties)| (name.clone(), properties_schema(properties)))
             .collect();
 
+        let mut raw = schema_for!(Raw).to_value();
+
+        let definitions = raw
+            .as_object_mut()
+            .and_then(|object| object.remove("$defs"));
+
         let properties = [
             ("client".into(), client.clone()),
-            ("raw".into(), schema_for!(Raw).to_value()),
+            ("raw".into(), raw),
             ("playtest".into(), client),
             ("studio".into(), property::object(studio)),
         ]
@@ -83,6 +89,10 @@ impl Catalog {
         let mut schema = property::object(properties);
         schema["$schema"] = json!("https://json-schema.org/draft/2020-12/schema");
         schema["title"] = json!("rotuner configuration");
+
+        if let Some(definitions) = definitions {
+            schema["$defs"] = definitions;
+        }
 
         Ok(schema)
     }

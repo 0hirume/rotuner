@@ -7,11 +7,9 @@ mod configuration;
 mod desktop;
 mod diagnostics;
 mod export;
+mod preferences;
 mod settings;
 mod xml;
-
-#[cfg(windows)]
-mod studio;
 
 use std::process::ExitCode;
 

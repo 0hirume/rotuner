@@ -21,18 +21,16 @@ Use `rotuner apply path/to/config.toml` to choose another file.
 
 Browse settings with `rotuner catalog`; generate an editor schema with `rotuner schema`.
 
-Export with `rotuner export > config.toml`. It exports all sources; pass `settings`, `client-storage`, or `studio-registry` to select one.
+Export all sources with `rotuner export > config.toml`. Pass `settings`, `client-storage`, or `studio-preferences` to select one source.
 
-Raw client JSON and Studio registry values:
+Raw client JSON and Studio preferences:
 
 ```toml
 [raw.storage]
 MinimizeToTray = '"false"'
 
-[[raw.registry]]
-path = 'Themes'
-name = 'CurrentTheme'
-data = { type = "REG_SZ", value = "Dark" }
+[raw.preferences]
+"Themes.CurrentTheme" = { type = "string", value = "Default" }
 ```
 
-Registry paths are relative to `HKCU\Software\Roblox\RobloxStudio`. Raw writes bypass Roblox setting validation.
+Preference keys use dots between groups. Escape literal dots and backslashes with a backslash. Raw writes bypass Roblox setting validation.

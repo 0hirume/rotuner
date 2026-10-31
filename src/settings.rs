@@ -13,11 +13,8 @@ use super::{
     arguments::Source,
     catalog::Catalog,
     configuration::{Classes, Configuration},
-    desktop, xml,
+    desktop, preferences, xml,
 };
-
-#[cfg(windows)]
-use super::studio;
 
 struct Change {
     path: PathBuf,
@@ -45,15 +42,10 @@ pub(super) fn apply(directory: &Path, configuration: Configuration) -> Result<us
         bail!("Roblox settings are supported on Windows and macOS");
     }
 
-    if !cfg!(windows) && !configuration.raw.registry.is_empty() {
-        bail!("Studio registry writes are only supported on Windows");
-    }
-
     ensure_closed()?;
     let mut changes = Vec::new();
 
-    #[cfg(windows)]
-    let preferences = studio::Change::prepare(&configuration.raw.registry)?;
+    let preferences = preferences::Change::prepare(&configuration.raw.preferences)?;
 
     if !configuration.raw.storage.is_empty() {
         let path = directory.join("LocalStorage").join("appStorage.json");
@@ -86,20 +78,12 @@ pub(super) fn apply(directory: &Path, configuration: Configuration) -> Result<us
         }
     }
 
-    commit(
-        changes,
-        #[cfg(windows)]
-        preferences,
-    )
+    commit(changes, preferences)
 }
 
 pub(super) fn export(directory: &Path, source: Option<Source>) -> Result<Configuration> {
     if !cfg!(any(windows, target_os = "macos")) {
         bail!("Roblox settings are supported on Windows and macOS");
-    }
-
-    if !cfg!(windows) && matches!(source, Some(Source::StudioRegistry)) {
-        bail!("Studio registry export is only supported on Windows");
     }
 
     let mut configuration = Configuration::default();
@@ -128,9 +112,8 @@ pub(super) fn export(directory: &Path, source: Option<Source>) -> Result<Configu
         configuration.raw.storage = desktop::export(&source)?;
     }
 
-    #[cfg(windows)]
-    if matches!(source, None | Some(Source::StudioRegistry)) {
-        configuration.raw.registry = studio::export()?;
+    if matches!(source, None | Some(Source::StudioPreferences)) {
+        configuration.raw.preferences = preferences::export()?;
     }
 
     Ok(configuration)
@@ -245,10 +228,7 @@ fn stage(path: &Path, contents: &str) -> Result<NamedTempFile> {
     Ok(temporary)
 }
 
-fn commit(
-    changes: Vec<Change>,
-    #[cfg(windows)] preferences: Option<studio::Change>,
-) -> Result<usize> {
+fn commit(changes: Vec<Change>, preferences: Option<preferences::Change>) -> Result<usize> {
     let mut completed = Vec::new();
 
     let result: Result<usize> = (|| {
@@ -262,7 +242,6 @@ fn commit(
             completed.push((change.path, change.rollback));
         }
 
-        #[cfg(windows)]
         if let Some(preferences) = preferences {
             return Ok(completed.len() + preferences.commit()?);
         }
@@ -294,5 +273,5 @@ fn commit(
         return Err(error).wrap_err(format!("Rollback failed: {}", failures.join("; ")));
     }
 
-    Err(error).wrap_err("Previous changes were restored")
+    Err(error).wrap_err("Previous file changes were restored")
 }
