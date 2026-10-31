@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.0](https://github.com/0hirume/rotuner/compare/v0.1.3...v0.2.0) - 2026-10-31
+
+### Added
+
+- [**breaking**] use one Studio preference format on Windows and macOS
+- apply and export settings on macOS
+
+### Other
+
+- add macOS release builds
+
 ## [0.1.3](https://github.com/0hirume/rotuner/compare/v0.1.2...v0.1.3) - 2026-10-23
 
 ### Added
