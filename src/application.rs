@@ -1,7 +1,7 @@
 use std::io::{self, Write as _};
 
 use clap::Parser as _;
-use miette::{IntoDiagnostic as _, Result, miette};
+use miette::{IntoDiagnostic as _, Result};
 
 use super::{
     arguments::{Arguments, Command},
@@ -21,18 +21,14 @@ pub(super) fn run() -> Result<()> {
                 Catalog::load()?.resolve(&mut configuration)?;
             }
 
-            let directory = dirs::data_local_dir()
-                .ok_or_else(|| miette!("Cannot locate Local AppData"))?
-                .join("Roblox");
+            let directory = settings::directory()?;
 
             let changed = settings::apply(&directory, configuration)?;
             println!("Updated {changed} settings store(s).");
         }
 
         Command::Export { source } => {
-            let directory = dirs::data_local_dir()
-                .ok_or_else(|| miette!("Cannot locate Local AppData"))?
-                .join("Roblox");
+            let directory = settings::directory()?;
 
             let configuration = settings::export(&directory, source)?;
             let source = toml::to_string_pretty(&configuration).into_diagnostic()?;

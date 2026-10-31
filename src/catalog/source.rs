@@ -82,7 +82,13 @@ struct Item {
 }
 
 pub(super) fn load() -> Result<BTreeMap<String, BTreeMap<String, Property>>> {
-    let response = Command::new("curl.exe")
+    let executable = if cfg!(windows) {
+        "curl.exe"
+    } else {
+        "/usr/bin/curl"
+    };
+
+    let response = Command::new(executable)
         .args([
             "--disable",
             "--fail",
@@ -94,7 +100,7 @@ pub(super) fn load() -> Result<BTreeMap<String, BTreeMap<String, Property>>> {
         ])
         .output()
         .into_diagnostic()
-        .wrap_err("Cannot run Windows curl to download the Roblox Full API Dump")?;
+        .wrap_err("Cannot run curl to download the Roblox Full API Dump")?;
 
     if !response.status.success() {
         bail!(

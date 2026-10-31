@@ -26,9 +26,27 @@ struct Change {
     rollback: NamedTempFile,
 }
 
+pub(super) fn directory() -> Result<PathBuf> {
+    let directory = if cfg!(target_os = "macos") {
+        dirs::home_dir().map(|home| home.join("Library"))
+    } else if cfg!(windows) {
+        dirs::data_local_dir()
+    } else {
+        bail!("Roblox settings are supported on Windows and macOS");
+    };
+
+    Ok(directory
+        .ok_or_else(|| miette!("Cannot locate the Roblox settings directory"))?
+        .join("Roblox"))
+}
+
 pub(super) fn apply(directory: &Path, configuration: Configuration) -> Result<usize> {
-    if !cfg!(windows) {
-        bail!("Rotuner currently supports Windows Roblox installations");
+    if !cfg!(any(windows, target_os = "macos")) {
+        bail!("Roblox settings are supported on Windows and macOS");
+    }
+
+    if !cfg!(windows) && !configuration.raw.registry.is_empty() {
+        bail!("Studio registry writes are only supported on Windows");
     }
 
     ensure_closed()?;
@@ -76,8 +94,12 @@ pub(super) fn apply(directory: &Path, configuration: Configuration) -> Result<us
 }
 
 pub(super) fn export(directory: &Path, source: Option<Source>) -> Result<Configuration> {
-    if !cfg!(windows) {
-        bail!("Rotuner currently supports Windows Roblox installations");
+    if !cfg!(any(windows, target_os = "macos")) {
+        bail!("Roblox settings are supported on Windows and macOS");
+    }
+
+    if !cfg!(windows) && matches!(source, Some(Source::StudioRegistry)) {
+        bail!("Studio registry export is only supported on Windows");
     }
 
     let mut configuration = Configuration::default();
@@ -136,8 +158,14 @@ fn read_optional(path: &Path) -> Result<Option<String>> {
 }
 
 fn ensure_closed() -> Result<()> {
-    let output = Command::new("tasklist.exe")
-        .args(["/FO", "CSV", "/NH"])
+    let (program, arguments) = if cfg!(windows) {
+        ("tasklist.exe", ["/FO", "CSV", "/NH"])
+    } else {
+        ("/bin/ps", ["-A", "-o", "comm="])
+    };
+
+    let output = Command::new(program)
+        .args(arguments)
         .output()
         .into_diagnostic()
         .wrap_err("Cannot check running Roblox applications")?;
@@ -149,10 +177,15 @@ fn ensure_closed() -> Result<()> {
     let processes = String::from_utf8_lossy(&output.stdout);
 
     for line in processes.lines() {
-        let name = line.split(',').next().unwrap_or_default().trim_matches('"');
+        let name = if cfg!(windows) {
+            line.split(',').next().unwrap_or_default().trim_matches('"')
+        } else {
+            line.trim().rsplit('/').next().unwrap_or_default()
+        };
 
         if name.eq_ignore_ascii_case("RobloxPlayerBeta.exe")
             || name.eq_ignore_ascii_case("RobloxStudioBeta.exe")
+            || matches!(name, "RobloxPlayer" | "RobloxStudio")
         {
             bail!("Close Roblox and Studio before applying settings");
         }
