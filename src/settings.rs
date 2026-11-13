@@ -180,12 +180,7 @@ fn ensure_closed() -> Result<()> {
 fn ensure_regular(path: &Path) -> Result<()> {
     let metadata = fs::symlink_metadata(path)
         .into_diagnostic()
-        .wrap_err_with(|| {
-            format!(
-                "Cannot access {}; launch and close the application first",
-                path.display()
-            )
-        })?;
+        .wrap_err_with(|| format!("Cannot access {}", path.display()))?;
 
     if !metadata.file_type().is_file() || metadata.permissions().readonly() {
         bail!("{} must be a writable regular file", path.display());
@@ -195,6 +190,10 @@ fn ensure_regular(path: &Path) -> Result<()> {
 }
 
 fn prepare(path: PathBuf, update: impl FnOnce(&str) -> Result<String>) -> Result<Option<Change>> {
+    if !path.try_exists().into_diagnostic()? {
+        return Ok(None);
+    }
+
     ensure_regular(&path)?;
 
     let original = fs::read_to_string(&path)
