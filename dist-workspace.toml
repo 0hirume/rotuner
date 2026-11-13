@@ -2,6 +2,6 @@
 members = ["cargo:."]
 
 [dist]
-cargo-dist-version = "0.33.1"
+cargo-dist-version = "0.34.0"
 hosting = ["github"]
 targets = ["x86_64-pc-windows-msvc", "x86_64-apple-darwin", "aarch64-apple-darwin"]
