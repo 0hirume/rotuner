@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.2.2](https://github.com/0hirume/rotuner/compare/v0.2.1...v0.2.2) - 2026-11-13
+
+### Fixed
+
+- skip missing settings files
+
+### Other
+
+- **deps:** update cargo-dist to 0.34.0
+
 ## [0.2.1](https://github.com/0hirume/rotuner/compare/v0.2.0...v0.2.1) - 2026-10-31
 
 ### Fixed
